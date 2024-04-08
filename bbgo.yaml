@@ -1,0 +1,26 @@
+sessions:
+  binance:
+    exchange: binance
+    envVarPrefix: binance
+    futures: true
+    isolatedMargin: true
+#    margin: true
+
+backtest:
+  # your back-test will start at the 2021-01-10, be sure to sync the data before 2021-01-10 
+  # because some indicator like EMA needs more data to calculate the current EMA value.
+  startTime: "2021-01-10"
+
+  # your back-test will end at the 2021-01-10
+  endTime: "2021-01-21"
+  
+  # the symbol data that you want to sync and back-test
+  symbols:
+  - BTCUSDT
+
+accounts:
+    # the initial account balance you want to start with
+    binance: # exchange name
+      balances:
+        BTC: 0.0
+        USDT: 1000.0

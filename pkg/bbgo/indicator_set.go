@@ -112,3 +112,7 @@ func (i *IndicatorSet) ATRP(interval types.Interval, window int) *indicatorv2.AT
 func (i *IndicatorSet) ADX(interval types.Interval, window int) *indicatorv2.ADXStream {
 	return indicatorv2.ADX(i.KLines(interval), window)
 }
+
+func (i *IndicatorSet) Ichimoku(interval types.Interval) *indicatorv2.IchimokuStream {
+	return indicatorv2.Ichimoku(i.KLines(interval))
+}
