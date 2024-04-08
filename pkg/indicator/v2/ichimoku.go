@@ -31,6 +31,18 @@ const (
 	NoTrend   Trend = 2
 )
 
+func (t Trend) String() string {
+	switch t {
+	case UpTrend:
+		return "Up"
+	case DownTrend:
+		return "Down"
+	case NoTrend:
+		return "None"
+	}
+	return ""
+}
+
 func Ichimoku(source KLineSubscription) *IchimokuStream {
 	s := &IchimokuStream{
 		Float64Series: types.NewFloat64Series(),
@@ -116,16 +128,4 @@ func (s *IchimokuStream) KumoTrend(last int) (Trend, float64) {
 		C := B - A
 		return DownTrend, (C / B) * 100
 	}
-}
-
-func (t Trend) String() string {
-	switch t {
-	case UpTrend:
-		return "Up"
-	case DownTrend:
-		return "Down"
-	case NoTrend:
-		return "None"
-	}
-	return ""
 }

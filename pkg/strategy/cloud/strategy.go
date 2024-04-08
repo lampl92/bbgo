@@ -94,17 +94,20 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 	// here we define a kline callback
 	// when a kline is closed, we will do something
 	callback := func(kline types.KLine) {
+		//
 		// if kline.Symbol != s.Symbol || kline.Interval != s.Interval {
 		// 	return
 		// }
 
 		kumo, kumoPercent := ichi.KumoTrend(0)
+		trend129 := (kline.Close.Float64() - ichi.Sup129.Last(0)) * 100 / ichi.Sup129.Last(0)
+		trend65 := (kline.Close.Float64() - ichi.Sup65.Last(0)) * 100 / ichi.Sup65.Last(0)
 
-		log.Infof("%s C:%.3f H:%.3f L:%.3f V:%.3f Tenkan: %.3f Kijun: %.3f Kumo: %s(%.3f%%) Chikou:%s",
-			kline.Symbol,
+		log.Infof("C:%.3f 65:%.3f%% 129:%.3f%% V:%.3f Tenkan: %.3f Kijun: %.3f Kumo: %s(%.3f%%) Chikou:%s",
+			// kline.Symbol,
 			kline.Close.Float64(),
-			kline.High.Float64(),
-			kline.Low.Float64(),
+			trend65,
+			trend129,
 			kline.Volume.Float64(),
 			ichi.TenkanValues.Last(0),
 			ichi.KijunValues.Last(0),
@@ -123,14 +126,20 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 	session.MarketDataStream.OnKLineClosed(types.KLineWith(s.Symbol, s.Interval, callback))
 
 	// session.MarketDataStream.OnKLine(func(kline types.KLine) {
-	// 	log.Infof("---%s high: %.3f Low: %.3f Volume: %.3f Tenkan: %.3f Kijun: %.3f length: %d",
-	// 		kline.Symbol,
-	// 		s.ichi.HighValues.Last(0),
-	// 		s.ichi.LowValues.Last(0),
+	// 	kumo, kumoPercent := ichi.KumoTrend(0)
+	// 	log.Infof("C:%.3f H:%.3f L:%.3f V:%.3f Tenkan: %.3f Kijun: %.3f Kumo: %s(%.3f%%) Chikou:%s",
+	// 		// kline.Symbol,
+	// 		kline.Close.Float64(),
+	// 		kline.High.Float64(),
+	// 		kline.Low.Float64(),
 	// 		kline.Volume.Float64(),
-	// 		s.ichi.TenkanValues.Last(0), s.ichi.KijunValues.Last(0), s.ichi.Length())
+	// 		ichi.TenkanValues.Last(0),
+	// 		ichi.KijunValues.Last(0),
+	// 		kumo.String(),
+	// 		kumoPercent,
+	// 		ichi.ChikouTrend().String(),
+	// 	)
 	// })
-
 	session.UserDataStream.OnBalanceUpdate(func(b types.BalanceMap) {
 		log.Infof("balance: %+v", b)
 	})
