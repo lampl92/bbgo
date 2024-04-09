@@ -94,7 +94,7 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 	// here we define a kline callback
 	// when a kline is closed, we will do something
 	callback := func(kline types.KLine) {
-		//
+		// // skip kline events that does not belong to this symbol
 		// if kline.Symbol != s.Symbol || kline.Interval != s.Interval {
 		// 	return
 		// }
