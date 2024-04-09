@@ -8,7 +8,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/c9s/bbgo/pkg/bbgo"
+	"github.com/c9s/bbgo/pkg/fixedpoint"
 	indicatorv2 "github.com/c9s/bbgo/pkg/indicator/v2"
+	"github.com/c9s/bbgo/pkg/strategy/common"
 	"github.com/c9s/bbgo/pkg/types"
 )
 
@@ -28,14 +30,26 @@ type State struct {
 }
 
 type Strategy struct {
+	*common.Strategy
+	// bbgo.OrderExecutor
+	// *bbgo.MarketDataStore
+	Market      types.Market
+	Environment *bbgo.Environment
 	// Market   types.Market
 	Symbol   string         `json:"symbol"`
 	State    *State         `persistence:"state"`
 	Interval types.Interval `json:"interval"`
+	bbgo.OpenPositionOptions
+	// activeOrders *bbgo.ActiveOrderBook
+	// profitOrders *bbgo.ActiveOrderBook
+	// orders       *core.OrderStore
+	profit *types.Queue
 }
 
 func (s *Strategy) Initialize() error {
-	// s.Strategy = &common.Strategy{}
+	if s.Strategy == nil {
+		s.Strategy = &common.Strategy{}
+	}
 	return nil
 }
 
@@ -62,10 +76,26 @@ func (s *Strategy) Subscribe(session *bbgo.ExchangeSession) {
 // This strategy simply spent all available quote currency to buy the symbol whenever kline gets closed
 func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, session *bbgo.ExchangeSession) error {
 	// Initialize the default value for state
-	// s.Strategy.Initialize(ctx, s.Environment, session, s.Market, ID, s.InstanceID())
+	s.Strategy.Initialize(ctx, s.Environment, session, s.Market, ID, s.InstanceID())
 	if s.State == nil {
 		s.State = &State{Counter: 1}
 	}
+	s.profit = types.NewQueue(2)
+	// s.orders = core.NewOrderStore(s.Symbol)
+	// s.orders.BindStream(session.UserDataStream)
+
+	// // we don't persist orders so that we can not clear the previous orders for now. just need time to support this.
+	// s.activeOrders = bbgo.NewActiveOrderBook(s.Symbol)
+	// s.activeOrders.OnFilled(func(o types.Order) {
+	// 	s.submitReverseOrder(o, session)
+	// })
+	// s.activeOrders.BindStream(session.UserDataStream)
+
+	// s.profitOrders = bbgo.NewActiveOrderBook(s.Symbol)
+	// s.profitOrders.OnFilled(func(o types.Order) {
+	// 	// we made profit here!
+	// })
+	// s.profitOrders.BindStream(session.UserDataStream)
 
 	ichi := session.Indicators(s.Symbol).Ichimoku(s.Interval)
 
@@ -74,7 +104,6 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 		log.Warnf("complete ichi failed \r\n")
 		return err
 	}
-
 	// To get the market information from the current session
 	// The market object provides the precision, MoQ (minimal of quantity) information
 
@@ -90,7 +119,6 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 		return err
 	}
 	log.Infof("Your balance: %+v", balance)
-
 	// here we define a kline callback
 	// when a kline is closed, we will do something
 	callback := func(kline types.KLine) {
@@ -98,28 +126,55 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 		// if kline.Symbol != s.Symbol || kline.Interval != s.Interval {
 		// 	return
 		// }
-
 		kumo, kumoPercent := ichi.KumoTrend(0)
 		trend129 := (kline.Close.Float64() - ichi.Sup129.Last(0)) * 100 / ichi.Sup129.Last(0)
 		trend65 := (kline.Close.Float64() - ichi.Sup65.Last(0)) * 100 / ichi.Sup65.Last(0)
+		// log.Infof("base numOfOrders: %+v", s.OrderExecutor.CurrentPosition())
+		// log.Infof("C:%.3f 65:%.3f%% 129:%.3f%% V:%.3f Tenkan: %.3f Kijun: %.3f Kumo: %s(%.3f%%) Chikou:%s",
+		// 	// kline.Symbol,
+		// 	kline.Close.Float64(),
+		// 	trend65,
+		// 	trend129,
+		// 	kline.Volume.Float64(),
+		// 	ichi.TenkanValues.Last(0),
+		// 	ichi.KijunValues.Last(0),
+		// 	kumo.String(),
+		// 	kumoPercent,
+		// 	ichi.ChikouTrend().String(),
+		// )
 
-		log.Infof("C:%.3f 65:%.3f%% 129:%.3f%% V:%.3f Tenkan: %.3f Kijun: %.3f Kumo: %s(%.3f%%) Chikou:%s",
-			// kline.Symbol,
-			kline.Close.Float64(),
-			trend65,
-			trend129,
-			kline.Volume.Float64(),
-			ichi.TenkanValues.Last(0),
-			ichi.KijunValues.Last(0),
-			kumo.String(),
-			kumoPercent,
-			ichi.ChikouTrend().String(),
-		)
+		if kumo == indicatorv2.UpTrend && kumoPercent > 0.01 {
+			if ichi.TenkanValues.Last(0) > ichi.KijunValues.Last(0) &&
+				kline.Close.Float64() >= ichi.CloseValues.Highest(26) &&
+				kline.Close.Float64() > trend65 &&
+				kline.Close.Float64() > trend129 {
+				opts := s.OpenPositionOptions
+				opts.Long = true
 
+				if price, ok := session.LastPrice(s.Symbol); ok {
+					opts.Price = price
+				}
+
+				// opts.Price = closePrice
+				if s.OrderExecutor.CurrentPosition().Base == 0 {
+					if _, err := s.OrderExecutor.OpenPosition(ctx, opts); err != nil {
+						logErr(err, "unable to open position")
+					}
+				}
+			}
+		}
+
+		if kline.Close.Float64() < (ichi.KijunValues.Last(0) - ichi.KijunValues.Last(0)*0.01) {
+			if err := s.OrderExecutor.ClosePosition(ctx, fixedpoint.One, "close"); err != nil {
+				logErr(err, "failed to close position")
+			}
+		}
 		// Update our counter and sync the changes to the persistence layer on time
 		// If you don't do this, BBGO will sync it automatically when BBGO shuts down.
 		s.State.Counter++
 		bbgo.Sync(ctx, s)
+
+		// Order handler
 	}
 
 	// register our kline event handler
@@ -149,6 +204,20 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 		log.Infof("connected")
 	})
 
+	session.UserDataStream.OnOrderUpdate(func(order types.Order) {
+		if order.Status == types.OrderStatusFilled {
+			// log.Infof("your order is filled: %+v", order)
+			s.profit.Update(order.Price.Float64() * order.Quantity.Float64())
+			if order.Tag == "close" {
+				log.Infof("Your profit: %.03f", s.profit.Last(0)-s.profit.Last(1))
+			}
+		}
+	})
+
+	session.UserDataStream.OnTradeUpdate(func(trade types.Trade) {
+		// log.Infof("trade price %f, fee %f %s", trade.Price.Float64(), trade.Fee.Float64(), trade.FeeCurrency)
+	})
+
 	return nil
 }
 
@@ -170,4 +239,22 @@ func (s *Strategy) CompleteIchi(i *indicatorv2.IchimokuStream, session *bbgo.Exc
 		}
 	}
 	return nil
+}
+
+func logErr(err error, msgAndArgs ...interface{}) bool {
+	if err == nil {
+		return false
+	}
+
+	if len(msgAndArgs) == 0 {
+		log.WithError(err).Error(err.Error())
+	} else if len(msgAndArgs) == 1 {
+		msg := msgAndArgs[0].(string)
+		log.WithError(err).Error(msg)
+	} else if len(msgAndArgs) > 1 {
+		msg := msgAndArgs[0].(string)
+		log.WithError(err).Errorf(msg, msgAndArgs[1:]...)
+	}
+
+	return true
 }
