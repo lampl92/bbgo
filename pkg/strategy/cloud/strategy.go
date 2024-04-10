@@ -40,10 +40,7 @@ type Strategy struct {
 	State    *State         `persistence:"state"`
 	Interval types.Interval `json:"interval"`
 	bbgo.OpenPositionOptions
-	// activeOrders *bbgo.ActiveOrderBook
-	// profitOrders *bbgo.ActiveOrderBook
-	// orders       *core.OrderStore
-	profit *types.Queue
+	saveOrders *types.SyncOrderMap
 }
 
 func (s *Strategy) Initialize() error {
@@ -80,25 +77,8 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 	if s.State == nil {
 		s.State = &State{Counter: 1}
 	}
-	s.profit = types.NewQueue(2)
-	// s.orders = core.NewOrderStore(s.Symbol)
-	// s.orders.BindStream(session.UserDataStream)
-
-	// // we don't persist orders so that we can not clear the previous orders for now. just need time to support this.
-	// s.activeOrders = bbgo.NewActiveOrderBook(s.Symbol)
-	// s.activeOrders.OnFilled(func(o types.Order) {
-	// 	s.submitReverseOrder(o, session)
-	// })
-	// s.activeOrders.BindStream(session.UserDataStream)
-
-	// s.profitOrders = bbgo.NewActiveOrderBook(s.Symbol)
-	// s.profitOrders.OnFilled(func(o types.Order) {
-	// 	// we made profit here!
-	// })
-	// s.profitOrders.BindStream(session.UserDataStream)
-
 	ichi := session.Indicators(s.Symbol).Ichimoku(s.Interval)
-
+	s.saveOrders = types.NewSyncOrderMap()
 	err := s.CompleteIchi(ichi, session)
 	if err != nil {
 		log.Warnf("complete ichi failed \r\n")
@@ -196,7 +176,7 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 	// 	)
 	// })
 	session.UserDataStream.OnBalanceUpdate(func(b types.BalanceMap) {
-		log.Infof("balance: %+v", b)
+		// log.Infof("balance: %+v", b)
 	})
 	// if you need to do something when the user data stream is ready
 	// note that you only receive order update, trade update, balance update when the user data stream is connect.
@@ -206,10 +186,9 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 
 	session.UserDataStream.OnOrderUpdate(func(order types.Order) {
 		if order.Status == types.OrderStatusFilled {
-			// log.Infof("your order is filled: %+v", order)
-			s.profit.Update(order.Price.Float64() * order.Quantity.Float64())
+			s.saveOrders.Add(order)
 			if order.Tag == "close" {
-				log.Infof("Your profit: %.03f", s.profit.Last(0)-s.profit.Last(1))
+				s.logProfit()
 			}
 		}
 	})
@@ -217,7 +196,6 @@ func (s *Strategy) Run(ctx context.Context, orderExecutor bbgo.OrderExecutor, se
 	session.UserDataStream.OnTradeUpdate(func(trade types.Trade) {
 		// log.Infof("trade price %f, fee %f %s", trade.Price.Float64(), trade.Fee.Float64(), trade.FeeCurrency)
 	})
-
 	return nil
 }
 
@@ -257,4 +235,18 @@ func logErr(err error, msgAndArgs ...interface{}) bool {
 	}
 
 	return true
+}
+
+func (s *Strategy) logProfit() {
+	id := s.saveOrders.IDs()
+
+	BuyOrder, _ := s.saveOrders.Get(id[len(id)-2])
+	SellOrder, _ := s.saveOrders.Get(id[len(id)-1])
+	Profit := (SellOrder.Price.Float64() - BuyOrder.Price.Float64()) * BuyOrder.Quantity.Float64()
+	log.Infof("[Profit] %s->%s Profit=%.3f[%d:%d]",
+		time.Time(BuyOrder.UpdateTime).UTC().Format(time.DateTime),
+		time.Time(SellOrder.UpdateTime).UTC().Format(time.DateTime),
+		Profit,
+		BuyOrder.OrderID,
+		SellOrder.OrderID)
 }
