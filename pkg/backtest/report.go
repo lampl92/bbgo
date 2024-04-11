@@ -201,20 +201,23 @@ func LoadReportIndex(outputDirectory string) (*ReportIndex, error) {
 func AddReportIndexRun(outputDirectory string, run Run) error {
 	// append report index
 	indexFile := getReportIndexPath(outputDirectory)
-	indexLock := flock.New(indexFile)
+	indexLock := flock.New(indexFile + ".lock")
 
 	if err := indexLock.Lock(); err != nil {
+		log.Warnf("report index file lock error: %s", err)
 		log.WithError(err).Errorf("report index file lock error: %s", err)
 		return err
 	}
 	defer func() {
 		if err := indexLock.Unlock(); err != nil {
+			log.Warnf("report index file unlock error: %s", err)
 			log.WithError(err).Errorf("report index file unlock error: %s", err)
 		}
 	}()
 
 	reportIndex, err := loadReportIndexLocked(indexFile)
 	if err != nil {
+		log.Warnf("loadReportIndexLocked: %s", err)
 		return err
 	}
 
@@ -236,6 +239,7 @@ func getReportIndexPath(outputDirectory string) string {
 // writeReportIndexLocked must be protected by file lock
 func writeReportIndexLocked(indexFilePath string, reportIndex *ReportIndex) error {
 	if err := util.WriteJsonFile(indexFilePath, reportIndex); err != nil {
+		log.Warnf("WriteJsonFile: %s", err)
 		return err
 	}
 	return nil

@@ -6,7 +6,7 @@ import (
 
 const TenkanPeriod = 9
 const KijunPeriod = 26
-const IchimokuMaxRequired = 130
+const IchimokuMaxRequired = 200
 
 type IchimokuStream struct {
 	*types.Float64Series
@@ -122,10 +122,8 @@ func (s *IchimokuStream) KumoTrend(last int) (Trend, float64) {
 	A := s.SpanA.Last(last)
 	B := s.SpanB.Last(last)
 	if A > B {
-		C := A - B
-		return UpTrend, (C / A) * 100
+		return UpTrend, (A / B) * 100
 	} else {
-		C := B - A
-		return DownTrend, (C / B) * 100
+		return DownTrend, (B / A) * 100
 	}
 }
