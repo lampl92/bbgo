@@ -91,9 +91,6 @@ type Exchange struct {
 var timeSetterOnce sync.Once
 
 func New(key, secret string) *Exchange {
-	if util.IsPaperTrade() {
-		binance.UseTestnet = true
-	}
 	var client = binance.NewClient(key, secret)
 	client.HTTPClient = binanceapi.DefaultHttpClient
 	client.Debug = viper.GetBool("debug-binance-client")
@@ -104,6 +101,11 @@ func New(key, secret string) *Exchange {
 
 	if isBinanceUs() {
 		client.BaseURL = BinanceUSBaseURL
+	}
+
+	if util.IsPaperTrade() {
+		client.BaseURL = BinanceTestBaseURL
+		futuresClient.BaseURL = FutureTestBaseURL
 	}
 
 	client2 := binanceapi.NewClient(client.BaseURL)
