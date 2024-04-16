@@ -303,7 +303,11 @@ func (s *Stream) getEndpointUrl(listenKey string) string {
 	var url string
 
 	if s.IsFutures {
-		url = FuturesWebSocketURL + "/ws"
+		if util.IsPaperTrade() {
+			url = FuturesWebSocketTestURL + "/ws"
+		} else {
+			url = FuturesWebSocketURL + "/ws"
+		}
 	} else if isBinanceUs() {
 		url = BinanceUSWebSocketURL + "/ws"
 	} else {
